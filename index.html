@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>APEX GT — 360° Interactive Car</title>
+<meta name="description" content="Interactive 360° 3D sports car configurator.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<style>
+:root{--bg:#060607;--panel:rgba(18,18,21,.78);--line:rgba(255,255,255,.12);--text:#e9e9ec;--muted:#8d9098;--gold:#c8b38a}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+h1,h2,h3,.display{font-family:Orbitron,Inter,sans-serif;letter-spacing:.04em}
+a{color:inherit;text-decoration:none}
+
+/* 3D stage: fixed behind content */
+#stage{position:fixed;inset:0;z-index:0;transition:opacity .6s}
+#stage.off{opacity:0}
+#gl{width:100%;height:100%;display:block;outline:none;pointer-events:auto}
+
+/* hotspots */
+#hot{position:fixed;inset:0;z-index:5;pointer-events:none;display:none}
+#hot.show{display:block}
+.hs{position:absolute;left:0;top:0;pointer-events:auto;background:none;border:0;cursor:pointer;display:flex;align-items:center;gap:8px;color:#fff;font:600 12px Inter,sans-serif;text-shadow:0 1px 4px #000;will-change:transform}
+.hs-dot{width:14px;height:14px;border-radius:50%;background:rgba(200,179,138,.35);border:2px solid var(--gold);box-shadow:0 0 0 0 rgba(200,179,138,.6);animation:pulse 2s infinite}
+.hs-lbl{white-space:nowrap;opacity:.9}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(200,179,138,.6)}70%{box-shadow:0 0 0 12px rgba(200,179,138,0)}100%{box-shadow:0 0 0 0 rgba(200,179,138,0)}}
+
+/* hotspot card */
+#hotcard{position:fixed;left:16px;bottom:16px;z-index:20;max-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;backdrop-filter:blur(10px);pointer-events:auto}
+#hotcard[hidden]{display:none}
+#hotcard h3{font-size:14px;color:var(--gold);margin-bottom:6px}
+#hotcard p{font-size:13px;color:#c9cbd1;line-height:1.5}
+#hotcard button{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
+
+/* loader */
+#loader{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .8s}
+#loader.done{opacity:0;pointer-events:none}
+.ld-brand{font-family:Orbitron,sans-serif;font-size:22px;letter-spacing:.3em}
+.ld-bar{width:220px;height:2px;background:rgba(255,255,255,.12)}
+#bar{height:100%;width:0;background:var(--gold);transition:width .3s}
+#pct{font-size:12px;color:var(--muted)}
+
+/* nav */
+.nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;justify-content:space-between;align-items:center;padding:18px 5vw;background:linear-gradient(#060607cc,transparent)}
+.brand{font-family:Orbitron,sans-serif;letter-spacing:.3em;font-size:14px}
+.nav ul{display:flex;gap:26px;list-style:none;font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
+.nav a:hover{color:#fff}
+
+/* page layers: text never captures pointer; buttons and panels do */
+main{position:relative;z-index:2;pointer-events:none}
+main section{position:relative}
+main button,main a,main .panel{pointer-events:auto}
+
+.btn{display:inline-block;padding:13px 26px;border:1px solid rgba(255,255,255,.4);border-radius:999px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;background:none;color:#fff;transition:.25s}
+.btn.solid{background:#fff;color:#000;border-color:#fff}
+.btn:hover{background:#fff;color:#000}
+
+/* hero */
+.hero{height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:0 5vw 13vh}
+.eyebrow{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
+.hero h1{font-size:clamp(48px,9vw,128px);font-weight:700;line-height:.95}
+.hero h1 span{color:var(--gold)}
+.lede{max-width:420px;margin:18px 0 28px;color:#b9bcc4;line-height:1.6;font-size:15px}
+.cta{display:flex;gap:14px;flex-wrap:wrap}
+.hint{position:absolute;bottom:4vh;left:5vw;font-size:11px;color:var(--muted);letter-spacing:.08em}
+
+/* journey */
+.journey{height:800vh}
+.jb{height:100vh;display:flex;align-items:flex-end;padding:0 5vw 12vh}
+.cap{max-width:380px;background:linear-gradient(90deg,rgba(6,6,7,.7),rgba(6,6,7,0));padding:18px 22px;border-left:2px solid var(--gold)}
+.cap .idx{font-size:11px;letter-spacing:.2em;color:var(--gold)}
+.cap h3{font-size:22px;margin:6px 0 8px}
+.cap p{color:#b9bcc4;font-size:14px;line-height:1.6}
+
+/* showroom with configurator */
+.showroom{height:100vh}
+.showroom-head{position:absolute;left:5vw;top:18vh;max-width:360px}
+.showroom-head h2{font-size:clamp(26px,3.6vw,44px);line-height:1.1}
+.showroom-head p{margin-top:12px;color:#b9bcc4;font-size:14px;line-height:1.6}
+.panel{position:absolute;right:3vw;top:50%;transform:translateY(-50%);width:300px;max-height:calc(100vh - 110px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;backdrop-filter:blur(12px)}
+.grp{margin-bottom:18px}
+.grp h4{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.swatches button{width:32px;height:32px;border-radius:50%;background:var(--c);border:2px solid transparent;cursor:pointer;outline:1px solid var(--line);outline-offset:2px}
+.swatches button[aria-pressed="true"]{border-color:#fff}
+.chip{padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--text);font-size:12px;cursor:pointer}
+.chip[aria-pressed="true"]{background:#fff;color:#000;border-color:#fff}
+.finish{width:28px;height:28px;border-radius:50%;background:var(--c);border:2px solid transparent;cursor:pointer}
+.finish[aria-pressed="true"]{border-color:#fff}
+.tiny{font-size:11px;color:var(--muted);margin-top:6px}
+
+/* spec + features */
+.wrap{padding:12vh 5vw;max-width:1200px;margin:0 auto}
+.wrap h2{font-size:clamp(24px,3.2vw,40px);margin-bottom:28px}
+.specs{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.spec{background:var(--bg);padding:28px}
+.spec b{display:block;font-family:Orbitron,sans-serif;font-size:30px;margin-bottom:6px}
+.spec span{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.feat{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.feat div{border:1px solid var(--line);border-radius:14px;padding:22px;background:rgba(255,255,255,.02)}
+.feat h3{font-size:14px;margin-bottom:8px;color:var(--gold)}
+.feat p{font-size:13px;color:#b9bcc4;line-height:1.6}
+footer{padding:40px 5vw;text-align:center;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+
+/* fallback */
+#fallback{display:none}
+.no-webgl #stage,.no-webgl #hot,.no-webgl #hotcard,.no-webgl .showroom{display:none}
+.no-webgl #fallback{display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3;text-align:center;color:var(--muted);font-size:14px;max-width:360px}
+.no-webgl .hero{height:auto;min-height:100vh}
+
+/* responsive */
+@media (max-width:900px){
+  .nav ul{display:none}
+  .specs{grid-template-columns:repeat(2,1fr)}
+  .feat{grid-template-columns:repeat(2,1fr)}
+  .panel{left:3vw;right:3vw;top:auto;bottom:12px;transform:none;width:auto;max-height:52vh}
+  .showroom-head{top:12vh}
+  .hint{display:none}
+  .journey .jb{align-items:flex-start;padding-top:14vh}
+}
+@media (max-width:520px){
+  .specs,.feat{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="loader"><div class="ld-brand">APEX GT</div><div class="ld-bar"><div id="bar"></div></div><div id="pct">0%</div></div>
+
+<div id="fallback">3D viewer unavailable on this device or connection. The specifications below still load in full.</div>
+
+<header class="nav">
+  <div class="brand">APEX GT</div>
+  <ul>
+    <li><a href="#journey">Journey</a></li>
+    <li><a href="#showroom">Configure</a></li>
+    <li><a href="#specs">Specs</a></li>
+    <li><a href="#features">Features</a></li>
+  </ul>
+</header>
+
+<div id="stage"><canvas id="gl" aria-label="Interactive 3D model of the APEX GT"></canvas></div>
+<div id="hot"></div>
+<div id="hotcard" hidden>
+  <button id="hotcard-close" aria-label="Close">×</button>
+  <h3 id="hotcard-title"></h3>
+  <p id="hotcard-text"></p>
+</div>
+
+<main>
+  <section id="hero" class="hero" data-mode="hero">
+    <p class="eyebrow">Limited series · 2026</p>
+    <h1>APEX <span>GT</span></h1>
+    <p class="lede">A 720 hp grand tourer, sculpted for the road and built around the driver.</p>
+    <div class="cta">
+      <a class="btn solid" href="#showroom">Configure</a>
+      <a class="btn" href="#journey">Watch the journey</a>
+    </div>
+    <p class="hint">Drag to rotate · Pinch or scroll wheel to zoom · Tap hotspots</p>
+  </section>
+
+  <section id="journey" class="journey" data-mode="journey">
+    <div class="jb"><div class="cap"><span class="idx">01</span><h3>Arrival</h3><p>Three-quarter view of the full silhouette, with the camera ready to move.</p></div></div>
+    <div class="jb"><div class="cap"><span class="idx">02</span><h3>Profile</h3><p>Head-on, the body narrows into a low, wide stance.</p></div></div>
+    <div class="jb"><div class="cap"><span class="idx">03</span><h3>Headlights</h3><p>The camera moves in on the LED light signature.</p></div></div>
+    <div class="jb"><div class="cap"><span class="idx">04</span><h3>Wheels</h3><p>Forged alloys with a dark barrel and spoke pattern.</p></div></div>
+    <div class="jb"><div class="cap"><span class="idx">05</span><h3>Grille</h3><p>Front intake and splitter, close up.</p></div></div>
+    <div class="jb"><div class="cap"><span class="idx">06</span><h3>Rear</h3><p>Tail lamp bar, diffuser and twin exhaust.</p></div></div>
+    <div class="jb"><div class="cap"><span class="idx">07</span><h3>Cockpit</h3><p>The body fades to reveal the cabin, dashboard and seats.</p></div></div>
+    <div class="jb"><div class="cap"><span class="idx">08</span><h3>360° showcase</h3><p>The car turns a full circle while the camera holds still.</p></div></div>
+  </section>
+
+  <section id="showroom" class="showroom" data-mode="showroom">
+    <div class="showroom-head">
+      <p class="eyebrow">Configurator</p>
+      <h2>Make it yours</h2>
+      <p>Drag the car to inspect it. Every change applies live.</p>
+    </div>
+    <aside class="panel" aria-label="Customisation panel">
+      <div class="grp">
+        <h4>Paint</h4>
+        <div class="row swatches">
+          <button data-color="#0b0b0e" style="--c:#0b0b0e" aria-pressed="true" title="Obsidian" aria-label="Obsidian"></button>
+          <button data-color="#3b3f46" style="--c:#3b3f46" aria-pressed="false" title="Graphite" aria-label="Graphite"></button>
+          <button data-color="#a31d17" style="--c:#a31d17" aria-pressed="false" title="Ember" aria-label="Ember"></button>
+          <button data-color="#e4e7ec" style="--c:#e4e7ec" aria-pressed="false" title="Arctic" aria-label="Arctic"></button>
+          <button data-color="#1c2c4f" style="--c:#1c2c4f" aria-pressed="false" title="Midnight" aria-label="Midnight"></button>
+          <button data-color="#c2aa7e" style="--c:#c2aa7e" aria-pressed="false" title="Champagne" aria-label="Champagne"></button>
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Wheel design</h4>
+        <div class="row">
+          <button class="chip" data-wheel="turbine" aria-pressed="true">Turbine</button>
+          <button class="chip" data-wheel="mesh" aria-pressed="false">Mesh</button>
+          <button class="chip" data-wheel="forged" aria-pressed="false">Forged</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="finish" data-rim="#c9ccd1" style="--c:#c9ccd1" aria-pressed="true" aria-label="Silver finish"></button>
+          <button class="finish" data-rim="#4a4e56" style="--c:#4a4e56" aria-pressed="false" aria-label="Gunmetal finish"></button>
+          <button class="finish" data-rim="#c8a86b" style="--c:#c8a86b" aria-pressed="false" aria-label="Gold finish"></button>
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Interior trim</h4>
+        <div class="row">
+          <button class="chip" data-trim="#151517" aria-pressed="true">Black</button>
+          <button class="chip" data-trim="#7d5f42" aria-pressed="false">Tan</button>
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Open panels</h4>
+        <div class="row">
+          <button class="chip" data-panel="doors" aria-pressed="false">Doors</button>
+          <button class="chip" data-panel="bonnet" aria-pressed="false">Bonnet</button>
+          <button class="chip" data-panel="boot" aria-pressed="false">Boot</button>
+          <button class="chip" data-action="close-all">Close all</button>
+        </div>
+        <p class="tiny">Simplified panels: doors swing out, bonnet and boot lift.</p>
+      </div>
+      <div class="grp">
+        <h4>Camera</h4>
+        <div class="row">
+          <button class="chip" data-view="front">Front</button>
+          <button class="chip" data-view="rear">Rear</button>
+          <button class="chip" data-view="side">Side</button>
+          <button class="chip" data-view="top">Top</button>
+          <button class="chip" data-view="interior">Interior</button>
+          <button class="chip" data-view="hero">Reset</button>
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Tools</h4>
+        <div class="row">
+          <button class="chip" data-tool="auto" aria-pressed="false">Auto-rotate</button>
+          <button class="chip" data-tool="hotspots" aria-pressed="true">Hotspots</button>
+          <button class="chip" data-tool="fullscreen">Fullscreen</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section id="specs" class="wrap" data-mode="off">
+    <h2>Specifications</h2>
+    <div class="specs">
+      <div class="spec"><b>720 hp</b><span>Power</span></div>
+      <div class="spec"><b>800 Nm</b><span>Torque</span></div>
+      <div class="spec"><b>2.9 s</b><span>0–100 km/h</span></div>
+      <div class="spec"><b>325 km/h</b><span>Top speed</span></div>
+      <div class="spec"><b>4.0 L</b><span>Twin-turbo V8</span></div>
+      <div class="spec"><b>1,480 kg</b><span>Dry weight</span></div>
+    </div>
+    <p class="tiny" style="margin-top:12px">Figures are placeholders for this demo, not measured data.</p>
+  </section>
+
+  <section id="features" class="wrap" data-mode="off">
+    <h2>Engineering</h2>
+    <div class="feat">
+      <div><h3>Carbon structure</h3><p>A lightweight carbon monocoque for rigidity and low weight.</p></div>
+      <div><h3>Active aero</h3><p>Front splitter and rear diffuser adjust with speed.</p></div>
+      <div><h3>Adaptive dampers</h3><p>Suspension tunes itself between comfort and track settings.</p></div>
+      <div><h3>Launch control</h3><p>Repeatable standing starts with traction management.</p></div>
+    </div>
+  </section>
+
+  <footer data-mode="off">© 2026 APEX GT · Concept configurator</footer>
+</main>
+
+<script>setTimeout(function(){ if(!window.__APEX_READY){ document.body.classList.add('no-webgl'); var l=document.getElementById('loader'); if(l) l.classList.add('done'); } }, 15000);</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
